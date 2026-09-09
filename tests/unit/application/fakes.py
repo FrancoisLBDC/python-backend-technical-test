@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 
 from domain.entities import Currency, ExchangeRate
+from domain.events import ExchangeRateChanged
 from domain.exceptions import RateNotFound
 
 
@@ -30,3 +31,11 @@ class FakeExchangeRateSource:
 
     def fetch_rates(self) -> list[ExchangeRate]:
         return self._rates
+
+
+class FakeEventPublisher:
+    def __init__(self) -> None:
+        self.published: list[ExchangeRateChanged] = []
+
+    def publish(self, event: ExchangeRateChanged) -> None:
+        self.published.append(event)

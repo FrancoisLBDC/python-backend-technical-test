@@ -9,6 +9,9 @@ select = ["E", "F", "I", "UP", "B", "N", "DJ"]
 # Domain exceptions are named after the failure (UnknownCurrency, RateNotFound...),
 # not suffixed with "Error", for readability at the call site.
 "domain/exceptions.py" = ["N818"]
+# PLY discovers lexer rules by exact name: t_<TOKEN>, where TOKEN must match
+# an uppercase entry in `tokens`. Not a style choice.
+"infrastructure/parser/lexer.py" = ["N802"]
 
 [tool.ruff.format]
 quote-style = "double"

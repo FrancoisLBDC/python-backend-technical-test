@@ -1,6 +1,8 @@
 from collections.abc import Iterable
+from dataclasses import replace
 
-from domain.entities import Currency, ExchangeRate
+from domain.entities import Currency, ExchangeRate, Money, Product
+from domain.events import ExchangeRateChanged
 from domain.exceptions import RateNotFound
 
 
@@ -30,3 +32,30 @@ class FakeExchangeRateSource:
 
     def fetch_rates(self) -> list[ExchangeRate]:
         return self._rates
+
+
+class FakeEventPublisher:
+    def __init__(self) -> None:
+        self.published: list[ExchangeRateChanged] = []
+
+    def publish(self, event: ExchangeRateChanged) -> None:
+        self.published.append(event)
+
+
+class FakeProductRepository:
+    def __init__(self, products: list[Product] | None = None) -> None:
+        self._products: dict[str, Product] = {
+            product.product_id: product for product in products or []
+        }
+        self.updated: list[tuple[str, Money]] = []
+
+    def list_by_currency(self, currency: Currency) -> list[Product]:
+        return [
+            product for product in self._products.values() if product.price.currency == currency
+        ]
+
+    def update_converted_price(self, product_id: str, converted_price: Money) -> None:
+        self._products[product_id] = replace(
+            self._products[product_id], converted_price=converted_price
+        )
+        self.updated.append((product_id, converted_price))

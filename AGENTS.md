@@ -31,7 +31,16 @@ Deliverables and their current status:
    wired in [config/urls.py](config/urls.py).
 4. **Bonus — Event-driven architecture**: every time a rate is imported or updated, emit an event
    (currency pair, new rate, previous rate if any, timestamp) consumed to update converted prices
-   on a product list. ❌ Not started.
+   on a product list. ✅ Done — fake product seeding
+   ([infrastructure/django_app/management/commands/seed_products.py](infrastructure/django_app/management/commands/seed_products.py)),
+   event emission
+   ([domain/events.py](domain/events.py), [application/ports/event_publisher.py](application/ports/event_publisher.py),
+   [infrastructure/events/in_process_event_bus.py](infrastructure/events/in_process_event_bus.py)),
+   and the consumer
+   ([application/use_cases/update_product_conversions.py](application/use_cases/update_product_conversions.py),
+   `DjangoProductRepository` in
+   [infrastructure/django_app/repositories.py](infrastructure/django_app/repositories.py))
+   subscribed to the bus in `import_exchange_rates`.
 
 ## Golden rule: stay in scope
 
@@ -52,8 +61,9 @@ never import from outer layers:
 
 ```
 domain/            <- innermost, zero external dependencies (not even on application/)
-  entities.py         Currency, Money, ExchangeRate, REFERENCE_CURRENCY (EUR)
+  entities.py         Currency, Money, ExchangeRate, Product, REFERENCE_CURRENCY (EUR)
   conversion.py       convert_amount(): pure conversion math, ROUND_HALF_UP to 2 decimals
+  events.py           ExchangeRateChanged (bonus: emitted when a rate is new or changes)
   exceptions.py       DomainError and subclasses (UnknownCurrency, RateNotFound, InvalidQuery,
                        ExchangeRateSourceError)
 
@@ -62,14 +72,23 @@ application/        <- depends only on domain/
   ports/              Protocol interfaces the use cases need from the outside world
     exchange_rate_repository.py   ExchangeRateRepository (get_rate / save_rate / save_many)
     exchange_rate_source.py       ExchangeRateSource (fetch_rates)
+    event_publisher.py            EventPublisher (publish) -- bonus
+    product_repository.py         ProductRepository (list_by_currency / update_converted_price)
+                                   -- bonus
   use_cases/          orchestration only, no concrete I/O
     convert_currency.py           ConvertCurrencyUseCase
-    import_exchange_rates.py      ImportExchangeRatesUseCase
+    import_exchange_rates.py      ImportExchangeRatesUseCase (also diffs + publishes
+                                   ExchangeRateChanged via EventPublisher)
+    update_product_conversions.py UpdateProductConversionsUseCase (bonus consumer: handle(event)
+                                   recomputes converted_price for every product in event.currency)
 
 infrastructure/     <- depends on application/ + domain/, implements the ports
-  django_app/         Django models/migrations, DjangoExchangeRateRepository, management command
+  django_app/         Django models/migrations, DjangoExchangeRateRepository, management commands
+                       (import_exchange_rates, seed_products), ProductModel + DjangoProductRepository
+                       (bonus)
   ecb/                EcbExchangeRateSource + ECB XML parser (Task 1 adapter)
   parser/             PLY lexer/grammar/QueryParser (Task 2 adapter)
+  events/             InProcessEventBus: in-process, synchronous pub/sub (bonus transport)
 
 config/              <- outermost: wiring only (Django settings, urls, wsgi, asgi)
 ```
@@ -120,6 +139,17 @@ docker compose exec app ruff format --check .                     # format check
 - **Domain exceptions** are named after the failure, not suffixed `Error` (e.g. `RateNotFound`,
   not `RateNotFoundError`) — `ruff` rule `N818` is deliberately disabled for
   `domain/exceptions.py`; don't add the suffix back.
+- **`ImportExchangeRatesUseCase`** snapshots each incoming currency's previous rate (via
+  `repository.get_rate`, catching `RateNotFound` → `None`) *before* calling `save_many`, then
+  publishes one `ExchangeRateChanged` per currency whose rate is new or differs from what was
+  stored — a same-day re-import with identical values publishes nothing. `InProcessEventBus`
+  (the `EventPublisher` implementation wired in the `import_exchange_rates` command) is
+  synchronous and in-process by design (bonus is unpaid, no new broker needed).
+- **`UpdateProductConversionsUseCase.handle`** is the bonus consumer, subscribed to the
+  `InProcessEventBus` by the `import_exchange_rates` command. On each `ExchangeRateChanged` it
+  loads every `Product` in `event.currency` via `ProductRepository.list_by_currency` and
+  recomputes `converted_price` with `convert_amount(price.amount, event.new_rate, Decimal("1"))`
+  — `event.new_rate` only, `previous_rate` is informational and never used for the math.
 - **PLY lexer/grammar** ([infrastructure/parser/lexer.py](infrastructure/parser/lexer.py),
   [grammar.py](infrastructure/parser/grammar.py)) discover rules from function docstrings at
   import time — these modules must never run under `python -OO` / `PYTHONOPTIMIZE=2`, and rule
@@ -163,7 +193,13 @@ only useful to the next agent if it matches reality; do not leave it describing 
 
 - Done: Task 1 (import CLI), Task 2 (interpreter), Task 3 (REST endpoint), CI (lint + tests on
   PR).
-- Not started: the event-driven architecture bonus.
+- Bonus (event-driven architecture) done: fake product seeding (`seed_products` command,
+  `ProductModel`), the `ExchangeRateChanged` domain event, the `EventPublisher` port,
+  `InProcessEventBus`, `ImportExchangeRatesUseCase` diffing/publishing on rate change, and the
+  consumer side — `ProductRepository` port, `DjangoProductRepository`,
+  `UpdateProductConversionsUseCase` — subscribed to the bus in the `import_exchange_rates`
+  command. Verified live: mutating a stored rate and re-running the command flips only the
+  matching-currency product's `converted_price`; an unchanged re-import is a no-op.
 - All three mandatory tasks are complete and verified end-to-end (automated tests + a live
   `curl` session matching the brief's exact examples). Anything beyond the bonus (extra fields,
   extra routes, alternative error formats, etc.) needs validation from the user first, per the

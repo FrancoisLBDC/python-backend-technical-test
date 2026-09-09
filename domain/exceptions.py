@@ -12,3 +12,7 @@ class RateNotFound(DomainError):
 
 class InvalidQuery(DomainError):
     """Raised when a conversion query string cannot be parsed."""
+
+
+class ExchangeRateSourceError(DomainError):
+    """Raised when exchange rates cannot be fetched or parsed from an external source."""

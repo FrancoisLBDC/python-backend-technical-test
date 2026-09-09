@@ -26,8 +26,9 @@ Deliverables and their current status:
    [infrastructure/parser/](infrastructure/parser/) + [domain/conversion.py](domain/conversion.py).
 3. **Task 3 — REST endpoint**: `GET /money/convert?query=10.32%20EUR%20to%20USD` returning
    `{"answer": "10.32 EUR = 11.30 USD"}`; `POST` must return `405`; a missing `query` param must
-   return `400` with plain-text body `Query parameter is required`. ❌ **Not started** —
-   [config/urls.py](config/urls.py) currently has `urlpatterns = []`. This is the next task.
+   return `400` with plain-text body `Query parameter is required`. ✅ Done —
+   [infrastructure/django_app/views.py](infrastructure/django_app/views.py) (`ConvertMoneyView`),
+   wired in [config/urls.py](config/urls.py).
 4. **Bonus — Event-driven architecture**: every time a rate is imported or updated, emit an event
    (currency pair, new rate, previous rate if any, timestamp) consumed to update converted prices
    on a product list. ❌ Not started.
@@ -87,7 +88,7 @@ Rules to enforce on every change:
   infrastructure type from a use case's signature.
 - Use cases stay thin: fetch through a port, run domain logic, return a DTO. Presentation
   concerns (HTTP status codes, JSON shape, error text) belong to the infrastructure/config layer
-  that calls the use case (e.g. the future Django view for Task 3), not to the use case itself.
+  that calls the use case (`ConvertMoneyView` for Task 3), not to the use case itself.
 
 ## Tech stack
 
@@ -128,6 +129,14 @@ docker compose exec app ruff format --check .                     # format check
   `threading.Lock` ([infrastructure/parser/query_parser.py](infrastructure/parser/query_parser.py))
   because PLY keeps mutable parse state on those singletons — never bypass the lock or
   instantiate a second lexer/parser without it.
+- **`ConvertMoneyView`** ([infrastructure/django_app/views.py](infrastructure/django_app/views.py))
+  defines only `get()`; all error paths (`DomainError` and subclasses) return plain-text
+  `HttpResponseBadRequest`, matching the single error format the test brief's curl examples show
+  — don't introduce a JSON error body.
+- **Django 5+ auto-adds `HEAD`** to any view that defines `get()`
+  (`django.views.generic.base.View.setup()` sets `self.head = self.get`). A `POST` to a GET-only
+  view therefore returns `Allow: GET, HEAD, OPTIONS`, not `Allow: GET` — this is normal, current
+  Django behavior, not a bug to fix.
 
 ## Testing
 
@@ -136,8 +145,9 @@ docker compose exec app ruff format --check .                     # format check
   to test use cases against `application/ports/*`).
 - `tests/integration/` — hits the real Django ORM/DB (`DjangoExchangeRateRepository`, the
   `import_exchange_rates` management command).
-- `tests/e2e/` — reserved for full request/response tests once the REST endpoint (Task 3) exists;
-  currently empty.
+- `tests/e2e/` — full request/response tests against `/money/convert` via Django's `Client`
+  ([tests/e2e/test_convert_endpoint.py](tests/e2e/test_convert_endpoint.py)), reproducing the
+  brief's curl examples (success, `POST` → 405, missing `query` → 400).
 - Coverage is scoped to `domain`, `application`, `infrastructure` (see `pyproject.toml`),
   migrations excluded.
 - PEP8/style is enforced by `ruff check` + `ruff format --check`, both run in CI on every PR
@@ -151,11 +161,10 @@ docker compose exec app ruff format --check .                     # format check
 section — and any other part of this file it affects — to reflect the new state. This file is
 only useful to the next agent if it matches reality; do not leave it describing a past state.
 
-- Done: Task 1 (import CLI), Task 2 (interpreter), CI (lint + tests on PR).
-- Not started: Task 3 (`GET /money/convert` REST endpoint) and the event-driven architecture
-  bonus.
-- When implementing Task 3, follow the response contract exactly as specified in the test brief:
-  `GET` only (`POST` → `405`), missing `query` → `400` with plain-text body
-  `Query parameter is required`, success body `{"answer": "10.32 EUR = 11.30 USD"}`. Anything
-  beyond that contract (extra fields, extra routes, alternative error formats, etc.) needs
-  validation from the user first, per the golden rule above.
+- Done: Task 1 (import CLI), Task 2 (interpreter), Task 3 (REST endpoint), CI (lint + tests on
+  PR).
+- Not started: the event-driven architecture bonus.
+- All three mandatory tasks are complete and verified end-to-end (automated tests + a live
+  `curl` session matching the brief's exact examples). Anything beyond the bonus (extra fields,
+  extra routes, alternative error formats, etc.) needs validation from the user first, per the
+  golden rule above.

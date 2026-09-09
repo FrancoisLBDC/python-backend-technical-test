@@ -16,12 +16,32 @@ Copy .env.example to .env
 then start the project with `docker compose up -d` 
 
 
-## Commands
-
-Import exchange rates from the ECB into the database : `docker compose exec app python manage.py import_exchange_rates`
+## CI commands
 
 Tests : `docker compose exec app pytest`
 
 Linter : `docker compose exec app ruff check .` 
 
 Formatter : `docker compose exec app ruff format --check .`
+
+## Usage / tasks
+
+Import exchange rates from the ECB into the database :
+```bash
+docker compose exec app python manage.py import_exchange_rates
+```
+
+Try the parser specifically
+```bash
+docker compose exec app python manage.py shell -c "from infrastructure.parser.query_parser import QueryParser; print(QueryParser().parse('10.32 EUR to USD'))"
+```
+
+Once rates are imported, convert an amount via `GET /money/convert`:
+
+```bash
+curl "http://localhost:8000/money/convert?query=10.32%20EUR%20to%20USD"
+```
+
+```json
+{"answer": "10.32 EUR = 11.30 USD"}
+```

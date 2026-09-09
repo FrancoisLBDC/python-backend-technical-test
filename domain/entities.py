@@ -34,3 +34,11 @@ class ExchangeRate:
 class Money:
     amount: Decimal
     currency: Currency
+
+
+@dataclass(frozen=True)
+class Product:
+    product_id: str
+    title: str
+    price: Money
+    converted_price: Money | None = None

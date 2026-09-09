@@ -15,3 +15,14 @@ class ExchangeRateModel(models.Model):
 
     def __str__(self) -> str:
         return f"{self.currency_code} {self.rate} @ {self.as_of.isoformat()}"
+
+
+class ProductModel(models.Model):
+    product_id = models.CharField(max_length=64, primary_key=True)
+    title = models.CharField(max_length=255)
+    price = models.DecimalField(max_digits=12, decimal_places=2)
+    currency_code = models.CharField(max_length=3)
+    converted_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"{self.product_id} {self.title} {self.price} {self.currency_code}"

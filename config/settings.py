@@ -11,6 +11,10 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
+ECB_RATES_URL = os.environ.get(
+    "ECB_RATES_URL", "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+)
+
 INSTALLED_APPS = [
     "infrastructure.django_app",
 ]

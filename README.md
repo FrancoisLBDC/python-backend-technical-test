@@ -18,6 +18,8 @@ then start the project with `docker compose up -d`
 
 ## Commands
 
+Import exchange rates from the ECB into the database : `docker compose exec app python manage.py import_exchange_rates`
+
 Tests : `docker compose exec app pytest`
 
 Linter : `docker compose exec app ruff check .` 
